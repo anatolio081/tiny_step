@@ -1,0 +1,16 @@
+[
+    {
+        "client_name": "Петр Иванович Бздонский",
+        "client_phone": "73121112233",
+        "week_day": "fri",
+        "time": "8:00",
+        "teacher_id": "0"
+    },
+    {
+        "client_name": "Анатолий",
+        "client_phone": "73121112233",
+        "week_day": "tue",
+        "time": "20:00",
+        "teacher_id": "8"
+    }
+]

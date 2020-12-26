@@ -1,0 +1,20 @@
+[
+    {
+        "client_name": "Vladimir",
+        "client_phone": "8831111355",
+        "time_to_learn": "3-5",
+        "goal": "work"
+    },
+    {
+        "client_name": "Vladimir",
+        "client_phone": "8831111355",
+        "time_to_learn": "5-7",
+        "goal": "work"
+    },
+    {
+        "client_name": "Vladimirdasd",
+        "client_phone": "88311113115",
+        "time_to_learn": "3-5",
+        "goal": "work"
+    }
+]
