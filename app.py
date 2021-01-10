@@ -1,10 +1,11 @@
 import random
 import json
 import os
+import data.data_provider as data_provider
 from flask import Flask, render_template, request, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-import data.data_provider as data_provider
+
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tiny_step.db"
