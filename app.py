@@ -1,64 +1,123 @@
-from flask import Flask, render_template, request
-from data.data_provider import DataProvider
 import random
+import json
+import os
+from flask import Flask, render_template, request, send_from_directory
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+import data.data_provider as data_provider
 
 app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tiny_step.db"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
+
+class Teacher(db.Model):
+    __tablename__ = 'teachers'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    about = db.Column(db.String, nullable=False)
+    rating = db.Column(db.Float, nullable=False)
+    picture = db.Column(db.String, nullable=False)
+    price = db.Column(db.Integer, nullable=False)
+    goals = db.Column(db.String, nullable=False)
+    free = db.Column(db.String, nullable=False)
+
+
+class Request(db.Model):
+    __tablename__ = 'requests'
+    id = db.Column(db.Integer, primary_key=True)
+    client_name = db.Column(db.String(100), nullable=False)
+    client_time = db.Column(db.String(5), nullable=False)
+    client_phone = db.Column(db.String(15), nullable=False)
+    goal = db.Column(db.String, nullable=False)
+
+
+class Booking(db.Model):
+    __tablename__ = 'booking'
+    id = db.Column(db.Integer, primary_key=True)
+    client_name = db.Column(db.String(100), nullable=False)
+    client_phone = db.Column(db.String(15), nullable=False)
+    week_day = db.Column(db.String(4), nullable=False)
+    time = db.Column(db.String, nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teachers.id"))
+    teacher = db.relationship("Teacher")
 
 
 @app.route('/')
 def render_main():
-    profiles = DataProvider.get_profiles()
-    goals = DataProvider.get_goals()
-    random.shuffle(profiles)
+    teacher_profiles = db.session.query(Teacher).filter().limit(6).all()
+    for profile in teacher_profiles:
+        profile.free = json.loads(profile.free)
+        profile.goals = profile.goals.split()
+    goals = data_provider.get_goals()
+    random.shuffle(teacher_profiles)
     return render_template('index.html',
-                           profiles=profiles,
+                           profiles=teacher_profiles,
                            goals=goals)
 
 
 @app.route('/all/', methods=["POST", "GET"])
 def render_all_profiles():
-    profiles = DataProvider.get_profiles()
-    random.shuffle(profiles)
+    teacher_profiles = db.session.query(Teacher).all()
+    for profile in teacher_profiles:
+        profile.free = json.loads(profile.free)
+        profile.goals = profile.goals.split()
     if request.method == 'POST':
         sort = int(request.form["sort"])
-        return render_template('all.html', profiles=profiles, sort=sort)
+        return render_template('all.html', profiles=teacher_profiles, sort=sort)
     else:
-        return render_template('all.html', profiles=profiles, sort=1)
+        return render_template('all.html', profiles=teacher_profiles, sort=1)
 
 
 @app.route('/goals/<goal>/')
 def render_goal(goal):
-    profiles = DataProvider.get_profiles()
-    goals = DataProvider.get_goals()
+    teacher_profiles = db.session.query(Teacher).filter(Teacher.goals.contains(goal)).all()
+    for profile in teacher_profiles:
+        profile.free = json.loads(profile.free)
+        profile.goals = profile.goals.split()
+    goals = data_provider.get_goals()
     return render_template('goal.html',
                            goal=goal,
                            goals=goals,
-                           profiles=profiles)
+                           profiles=teacher_profiles)
 
 
 @app.route('/profiles/<int:id>/')
 def render_profile(id):
-    profiles = DataProvider.get_profiles()
-    goals = DataProvider.get_goals()
-    return render_template('profile.html',
-                           profile=profiles[id],
-                           goals=goals)
+    teacher_profile = db.session.query(Teacher).get(id)
+    if teacher_profile is not None:
+        goals = data_provider.get_goals()
+        teacher_profile.free = json.loads(teacher_profile.free)
+        teacher_profile.goals = teacher_profile.goals.split()
+        return render_template('profile.html',
+                               profile=teacher_profile,
+                               goals=goals)
+    else:
+        error_data = "Преподаватель отсутствует в БД"
+        return render_template("404.html", error=error_data), 404
 
 
 @app.route('/request/')
 def render_request():
-    goals = DataProvider.get_goals()
+    goals = data_provider.get_goals()
     return render_template('request.html', goals=goals)
 
 
 @app.route('/request_done/', methods=["POST"])
 def render_request_done():
-    goals = DataProvider.get_goals()
+    goals = data_provider.get_goals()
     client_name = request.form["clientName"]
     client_phone = request.form["clientPhone"]
     client_time = request.form["time"]
     goal = request.form["goal"]
-    DataProvider.add_request(client_name, client_phone, client_time, goal)
+    booking_request = Request(client_name=client_name,
+                              client_time=client_time,
+                              client_phone=client_phone,
+                              goal=goal)
+    db.session.add(booking_request)
+    db.session.commit()
     return render_template('request_done.html',
                            goal=goal,
                            goals=goals,
@@ -69,9 +128,11 @@ def render_request_done():
 
 @app.route('/booking/<int:id_teacher>/<day>/<time>/')
 def render_booking_form(id_teacher, day, time):
-    profiles = DataProvider.get_profiles()
+    teacher_profile = db.session.query(Teacher).get(id_teacher)
+    teacher_profile.free = json.loads(teacher_profile.free)
+    teacher_profile.goals = teacher_profile.goals.split()
     return render_template('booking.html',
-                           profile=profiles[id_teacher],
+                           profile=teacher_profile,
                            day=day,
                            time=time)
 
@@ -82,8 +143,14 @@ def render_booking_done():
     client_phone = request.form["clientPhone"]
     week_day = request.form["clientWeekday"]
     client_time = request.form["clientTime"]
-    client_teacher = request.form["clientTeacher"]
-    DataProvider.add_order(client_name, client_phone, week_day, client_time, client_teacher)
+    client_teacher_id = request.form["clientTeacher"]
+    booking_data = Booking(client_name=client_name,
+                           client_phone=client_phone,
+                           week_day=week_day,
+                           time=client_time,
+                           teacher_id=client_teacher_id)
+    db.session.add(booking_data)
+    db.session.commit()
     return render_template('booking_done.html',
                            client_name=client_name,
                            day=week_day,
@@ -93,12 +160,18 @@ def render_booking_done():
 
 @app.errorhandler(404)
 def render_not_found(error):
-    return render_template("404.html").format(error), 404
+    return render_template("404.html", error=error), 404
 
 
 @app.errorhandler(404)
 def server_error(error):
-    return render_template("500.html").format(error), 500
+    return render_template("500.html", error=error), 500
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 
 if __name__ == '__main__':
